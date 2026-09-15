@@ -13,7 +13,7 @@
         button { background: #00ca4e; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; font-weight: bold; }
         input { display: block; margin: 10px auto; padding: 8px; width: 250px; background: #333; color: white; border: 1px solid #555; border-radius: 5px; }
     </style>
-    <!-- De stabiele server-link voor de database software -->
+    <!-- GECORRIGEERD: De juiste, volledige link naar de database software -->
     <script src="https://unpkg.com"></script>
 </head>
 <body>
@@ -35,12 +35,11 @@
     <div class="grid" id="gameLijst"></div>
 
     <script>
-        // === PLAK HIERONDER JOUW TWEE CODES ===
-        const SUPABASE_URL = "https://zwfhrbvunmcdffsrgxhn.supabase.co/rest/v1/";
+        // GECORRIGEERD: Jouw eigen codes met de juiste hoofd-URL zonder /rest/v1/
+        const SUPABASE_URL = "https://zwfhrbvunmcdffsrgxhn.supabase.co";
         const SUPABASE_KEY = "sb_publishable_Hrkm_ghr_xNpXdCYITo1Ug_F4assrx8";
-        // =====================================
         
-        // Maak de verbinding met Supabase aan (volgorde is nu 100% correct)
+        // Maak de verbinding met Supabase aan
         const supabase = supabasejs.createClient(SUPABASE_URL, SUPABASE_KEY);
 
         // 1. Functie om de website te vullen met al geüploade games

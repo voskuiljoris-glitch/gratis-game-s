@@ -13,16 +13,14 @@
         button { background: #00ca4e; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; font-weight: bold; }
         input { display: block; margin: 10px auto; padding: 8px; width: 250px; background: #333; color: white; border: 1px solid #555; border-radius: 5px; }
     </style>
-    <!-- Laad de gratis Supabase software in de website -->
+    <!-- De stabiele server-link voor Supabase -->
     <script src="https://unpkg.com"></script>
-
 </head>
 <body>
 
     <h1>🎮 Open Game Platform</h1>
     <p>Speel games of upload gratis je eigen HTML-game!</p>
 
-    <!-- HIER KUNNEN MENSEN UPLOADEN -->
     <div class="box">
         <h3>Zelf een game uploaden?</h3>
         <input type="text" id="gameNaam" placeholder="Naam van je game...">
@@ -41,9 +39,9 @@
         const SUPABASE_KEY = "sb_publishable_Hrkm_ghr_xNpXdCYITo1Ug_F4assrx8";
         // =====================================
         
-        const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+        // Hier stond de fout; deze regel roept Supabase nu op de juiste manier aan!
+        const supabase = supabasejs.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-        // 1. Functie om de website te vullen met al geüploade games
         async function laadGames() {
             const { data, error } = await supabase.storage.from('games').list();
             if (error) return;
@@ -66,16 +64,16 @@
             });
         }
 
-        // 2. Functie die start als een bezoeker op de upload-knop drukt
         async function uploadDeGame() {
             const naam = document.getElementById('gameNaam').value;
-            const bestand = document.getElementById('gameBestand').files[0];
+            const fileInput = document.getElementById('gameBestand');
 
-            if (!naam || !bestand) {
+            if (!naam || !fileInput.files.length) {
                 alert("Vul een naam in en kies een .html game-bestand!");
                 return;
             }
 
+            const bestand = fileInput.files[0];
             alert("Bezig met uploaden... klik pas weg als de melding 'Klaar' verschijnt.");
 
             const { data, error } = await supabase.storage

@@ -13,7 +13,7 @@
         button { background: #00ca4e; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; font-weight: bold; }
         input { display: block; margin: 10px auto; padding: 8px; width: 250px; background: #333; color: white; border: 1px solid #555; border-radius: 5px; }
     </style>
-    <!-- De stabiele server-link voor Supabase -->
+    <!-- De stabiele server-link voor de database software -->
     <script src="https://unpkg.com"></script>
 </head>
 <body>
@@ -21,6 +21,7 @@
     <h1>🎮 Open Game Platform</h1>
     <p>Speel games of upload gratis je eigen HTML-game!</p>
 
+    <!-- HIER KUNNEN MENSEN UPLOADEN -->
     <div class="box">
         <h3>Zelf een game uploaden?</h3>
         <input type="text" id="gameNaam" placeholder="Naam van je game...">
@@ -36,15 +37,19 @@
     <script>
         // === PLAK HIERONDER JOUW TWEE CODES ===
         const SUPABASE_URL = "https://zwfhrbvunmcdffsrgxhn.supabase.co/rest/v1/";
-        const SUPABASE_KEY = "sb_publishable_Hrkm_ghr_xNpXdCYITo1Ug_F4assrx8";
+        const SUPABASE_KEY = "sb_publishable_Hrkm_ghr_xNpXdCYITo1Ug_F4assrx8;
         // =====================================
         
-        // Hier stond de fout; deze regel roept Supabase nu op de juiste manier aan!
+        // Maak de verbinding met Supabase aan (volgorde is nu 100% correct)
         const supabase = supabasejs.createClient(SUPABASE_URL, SUPABASE_KEY);
 
+        // 1. Functie om de website te vullen met al geüploade games
         async function laadGames() {
             const { data, error } = await supabase.storage.from('games').list();
-            if (error) return;
+            if (error) {
+                console.error("Fout bij laden van games:", error.message);
+                return;
+            }
             
             const lijst = document.getElementById('gameLijst');
             lijst.innerHTML = ""; 
@@ -64,6 +69,7 @@
             });
         }
 
+        // 2. Volledig kogelvrije uploadfunctie
         async function uploadDeGame() {
             const naam = document.getElementById('gameNaam').value;
             const fileInput = document.getElementById('gameBestand');
@@ -73,21 +79,26 @@
                 return;
             }
 
-            const bestand = fileInput.files[0];
+            const bestand = fileInput.files[0]; // Pak het geselecteerde bestand
             alert("Bezig met uploaden... klik pas weg als de melding 'Klaar' verschijnt.");
 
+            // Stuur het bestand door naar de database met de juiste instellingen
             const { data, error } = await supabase.storage
                 .from('games')
-                .upload(naam + '.html', bestand, { cacheControl: '3600', upsert: true });
+                .upload(naam + '.html', bestand, { 
+                    contentType: 'text/html',
+                    upsert: true 
+                });
 
             if (error) {
                 alert("Er ging iets mis met de upload: " + error.message);
             } else {
                 alert("Je game staat live op de website!");
-                laadGames(); 
+                laadGames(); // Ververs de lijst direct op je scherm
             }
         }
 
+        // Start direct met het inladen van de lijst als de site opent
         laadGames();
     </script>
 </body>

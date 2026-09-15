@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gratis Game Platform</title>
+    <style>
+        body { font-family: Arial, sans-serif; background: #121212; color: white; text-align: center; padding: 20px; }
+        .box { background: #1e1e1e; padding: 20px; border-radius: 10px; display: inline-block; margin: 20px; border: 2px dashed #444; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 20px; max-width: 1200px; margin: 20px auto; }
+        .card { background: #222; padding: 15px; border-radius: 10px; border: 1px solid #333; }
+        iframe { width: 100%; height: 250px; border: none; background: #000; border-radius: 5px; }
+        button { background: #00ca4e; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; font-weight: bold; }
+        input { display: block; margin: 10px auto; padding: 8px; width: 250px; background: #333; color: white; border: 1px solid #555; border-radius: 5px; }
+    </style>
+    <!-- Laad de gratis Supabase software in de website -->
+    <script src="https://jsdelivr.net"></script>
+</head>
+<body>
+
+    <h1>🎮 Open Game Platform</h1>
+    <p>Speel games of upload gratis je eigen HTML-game!</p>
+
+    <!-- HIER KUNNEN MENSEN UPLOADEN -->
+    <div class="box">
+        <h3>Zelf een game uploaden?</h3>
+        <input type="text" id="gameNaam" placeholder="Naam van je game...">
+        <input type="file" id="gameBestand" accept=".html">
+        <button onclick="uploadDeGame()">Nu Uploaden & Publiceren</button>
+    </div>
+
+    <hr style="border: 1px solid #333;">
+
+    <h2>Alle Games</h2>
+    <div class="grid" id="gameLijst"></div>
+
+    <script>
+        // === PLAK HIERONDER JOUW TWEE CODES ===
+        const SUPABASE_URL = "https://zwfhrbvunmcdffsrgxhn.supabase.co/rest/v1/";
+        const SUPABASE_KEY = "sb_publishable_Hrkm_ghr_xNpXdCYITo1Ug_F4assrx8";
+        // =====================================
+        
+        const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+        // 1. Functie om de website te vullen met al geüploade games
+        async function laadGames() {
+            const { data, error } = await supabase.storage.from('games').list();
+            if (error) return;
+            
+            const lijst = document.getElementById('gameLijst');
+            lijst.innerHTML = ""; 
+
+            data.forEach(file => {
+                if(file.name === ".emptyFolderPlaceholder") return;
+                
+                const { data: urlData } = supabase.storage.from('games').getPublicUrl(file.name);
+                const gameNaam = file.name.replace('.html', '');
+
+                lijst.innerHTML += `
+                    <div class="card">
+                        <h3>${gameNaam}</h3>
+                        <iframe src="${urlData.publicUrl}"></iframe>
+                    </div>
+                `;
+            });
+        }
+
+        // 2. Functie die start als een bezoeker op de upload-knop drukt
+        async function uploadDeGame() {
+            const naam = document.getElementById('gameNaam').value;
+            const bestand = document.getElementById('gameBestand').files[0];
+
+            if (!naam || !bestand) {
+                alert("Vul een naam in en kies een .html game-bestand!");
+                return;
+            }
+
+            alert("Bezig met uploaden... klik pas weg als de melding 'Klaar' verschijnt.");
+
+            const { data, error } = await supabase.storage
+                .from('games')
+                .upload(naam + '.html', bestand, { cacheControl: '3600', upsert: true });
+
+            if (error) {
+                alert("Er ging iets mis met de upload: " + error.message);
+            } else {
+                alert("Je game staat live op de website!");
+                laadGames(); 
+            }
+        }
+
+        laadGames();
+    </script>
+</body>
+</html>

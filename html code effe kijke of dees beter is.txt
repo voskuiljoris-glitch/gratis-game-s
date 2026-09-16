@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Open Game Platform</title>
+    <style>
+        body { font-family: Arial, sans-serif; background: #121212; color: white; text-align: center; padding: 20px; }
+        .box { background: #1e1e1e; padding: 20px; border-radius: 10px; display: inline-block; margin: 20px; border: 2px dashed #444; max-width: 400px; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 20px; max-width: 1200px; margin: 20px auto; }
+        .card { background: #222; padding: 15px; border-radius: 10px; border: 1px solid #333; text-align: left; }
+        .game-wrapper { width: 100%; height: 300px; background: #000; border-radius: 5px; overflow: hidden; margin-bottom: 10px; }
+        iframe { width: 100%; height: 100%; border: none; }
+        button { background: #00ca4e; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; font-weight: bold; width: 100%; margin-top: 10px; }
+        button:hover { background: #00b545; }
+        input[type="text"] { display: block; margin: 10px 0; padding: 8px; width: 100%; background: #333; color: white; border: 1px solid #555; border-radius: 5px; box-sizing: border-box; }
+        .checkbox-container { text-align: left; margin: 10px 0; font-size: 14px; }
+        .checkbox-container label { display: block; margin: 5px 0; cursor: pointer; }
+        .tag { display: inline-block; background: #444; font-size: 12px; padding: 3px 8px; border-radius: 3px; margin-right: 5px; margin-top: 5px; }
+    </style>
+    <!-- De stabiele server-link voor de database software -->
+    <script src="https://unpkg.com"></script>
+</head>
+<body>
+
+    <h1>🎮 Open Game Platform</h1>
+    <p>Speel gratis HTML-games, gemaakt door de community!</p>
+
+    <!-- HIER KUNNEN MENSEN UPLOADEN -->
+    <div class="box">
+        <h3>Zelf een game uploaden?</h3>
+        <input type="text" id="gameNaam" placeholder="Naam van je game...">
+        <input type="file" id="gameBestand" accept=".html" style="margin: 10px 0; color: #ccc;">
+        
+        <div class="checkbox-container">
+            <label><input type="checkbox" id="checkPC"> 🖥 Geschikt voor PC</label>
+            <label><input type="checkbox" id="checkMobiel"> 📱 Geschikt voor telefoon</label>
+        </div>
+        
+        <button onclick="uploadDeGame()">Nu Uploaden & Publiceren</button>
+    </div>
+
+    <hr style="border: 1px solid #333; margin: 40px 0;">
+
+    <h2>Alle Games</h2>
+    <div class="grid" id="gameLijst"></div>
+
+    <script>
+        // Jouw persoonlijke Supabase API-sleutels
+        const SUPABASE_URL = "https://supabase.co";
+        const SUPABASE_KEY = "sb_publishable_Hrkm_ghr_xNpXdCYITo1Ug_F4assrx8";
+        
+        // Verbinden met de database
+        const supabase = supabasejs.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+        // 1. Functie om alle games op te halen en te tonen
+        async function laadGames() {
+            const { data, error } = await supabase.storage.from('games').list();
+            if (error) {
+                console.error("Fout bij laden van games:", error.message);
+                return;
+            }
+            
+            const lijst = document.getElementById('gameLijst');
+            lijst.innerHTML = ""; 
+
+            data.forEach(file => {
+                if(file.name === ".emptyFolderPlaceholder") return;
+                
+                const { data: urlData } = supabase.storage.from('games').getPublicUrl(file.name);
+                
+                // Haal de tags uit de bestandsnaam (als die erin zitten)
+                let schoneNaam = file.name.replace('.html', '');
+                let isPC = schoneNaam.includes('_PC');
+                let isMobiel = schoneNaam.includes('_MOB');
+                
+                // Maak de naam weer netjes voor het scherm
+                schoneNaam = schoneNaam.replace('_PC', '').replace('_MOB', '');
+
+                // BELANGRIJK: sandbox="allow-scripts allow-same-origin" zorgt ervoor dat savegames bewaard blijven!
+                lijst.innerHTML += `
+                    <div class="card">
+                        <div class="game-wrapper">
+                            <iframe src="${urlData.publicUrl}" sandbox="allow-scripts allow-same-origin"></iframe>
+                        </div>
+                        <h3>${schoneNaam}</h3>
+                        <div>
+                            ${isPC ? '<span class="tag">🖥 PC</span>' : ''}
+                            ${isMobiel ? '<span class="tag">📱 Mobiel</span>' : ''}
+                        </div>
+                    </div>
+                `;
+            });
+        }
+
+        // 2. Uploadfunctie die ook de PC/Telefoon tags meestuurt
+        async function uploadDeGame() {
+            const naamInput = document.getElementById('gameNaam').value.trim();
+            const fileInput = document.getElementById('gameBestand');
+            const checkPC = document.getElementById('checkPC').checked;
+            const checkMobiel = document.getElementById('checkMobiel').checked;
+
+            if (!naamInput || !fileInput.files.length) {
+                alert("Vul een naam in en kies een .html game-bestand!");
+                return;
+            }
+
+            const bestand = fileInput.files[0];
+            
+            // Plak stiekem tags aan de bestandsnaam om te onthouden waar de game geschikt voor is
+            let bestandsNaam = naamInput;
+            if (checkPC) bestandsNaam += "_PC";
+            if (checkMobiel) bestandsNaam += "_MOB";
+            bestandsNaam += ".html";
+
+            alert("Bezig met uploaden... even geduld.");
+
+            const { data, error } = await supabase.storage
+                .from('games')
+                .upload(bestandsNaam, bestand, { 
+                    contentType: 'text/html',
+                    upsert: true 
+                });
+
+            if (error) {
+                alert("Er ging iets mis met de upload: " + error.message);
+            } else {
+                alert("Je game staat live op de website!");
+                // Maak het formulier weer leeg
+                document.getElementById('gameNaam').value = "";
+                fileInput.value = "";
+                document.getElementById('checkPC').checked = false;
+                document.getElementById('checkMobiel').checked = false;
+                laadGames(); 
+            }
+        }
+
+        // Start direct als de pagina opent
+        laadGames();
+    </script>
+</body>
+</html>

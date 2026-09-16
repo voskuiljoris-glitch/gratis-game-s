@@ -28,6 +28,14 @@
         <h3>Zelf een game uploaden?</h3>
         <input type="text" id="gameNaam" placeholder="Naam van je game...">
         <input type="file" id="gameBestand" accept=".html">
+        <div style="margin: 10px 0; font-size: 14px;">
+            <label style="display:inline-block; margin-right: 15px;">
+                <input type="checkbox" id="geschiktPC" checked> 🖥️ Geschikt voor PC
+            </label>
+            <label style="display:inline-block;">
+                <input type="checkbox" id="geschiktTelefoon" checked> 📱 Geschikt voor telefoon
+            </label>
+        </div>
         <button id="uploadKnop">Nu Uploaden &amp; Publiceren</button>
         <p id="status"></p>
     </div>
@@ -63,8 +71,9 @@
 
             lijst.innerHTML = "";
 
-            data.forEach(file => {
+            data.forEach(async (file) => {
                 if (file.name === ".emptyFolderPlaceholder") return;
+                if (file.name.endsWith('.meta.json')) return; // dit is geen game, maar bijbehorende info
 
                 const { data: urlData } = db.storage.from('games').getPublicUrl(file.name);
                 // Supabase geeft .html-bestanden altijd terug als platte tekst
@@ -80,28 +89,65 @@
                 // textContent i.p.v. innerHTML: een gekke bestandsnaam kan zo geen code injecteren
                 titel.textContent = file.name.replace(/\.html$/, '');
 
+                // Wrapper zodat de overlay precies over de iframe heen past
+                const wrapper = document.createElement('div');
+                wrapper.style.position = 'relative';
+
                 const frame = document.createElement('iframe');
                 // sandbox: de game mag draaien, maar niet bij jouw site of opslag komen
-                // allow-fullscreen: nodig zodat de fullscreen-knop hieronder werkt
+                // allow-fullscreen: nodig zodat volledig scherm werkt
                 frame.setAttribute('sandbox', 'allow-scripts allow-fullscreen');
                 frame.setAttribute('allowfullscreen', 'true');
 
-                const fsKnop = document.createElement('button');
-                fsKnop.textContent = '⛶ Volledig scherm';
-                fsKnop.style.marginTop = '8px';
-                fsKnop.style.fontSize = '13px';
-                fsKnop.style.padding = '6px 12px';
-                fsKnop.addEventListener('click', () => {
+                // Compatibiliteit ophalen (zo mogelijk); standaard beide aan als er
+                // geen metadata-bestand is (bijv. oudere, al bestaande uploads)
+                const naamZonderExt = file.name.replace(/\.html$/, '');
+                let compat = { pc: true, telefoon: true };
+                try {
+                    const { data: metaUrlData } = db.storage.from('games').getPublicUrl(naamZonderExt + '.meta.json');
+                    const metaRes = await fetch(metaUrlData.publicUrl + '?v=' + Date.now());
+                    if (metaRes.ok) {
+                        const metaJson = await metaRes.json();
+                        compat = { pc: !!metaJson.pc, telefoon: !!metaJson.telefoon };
+                    }
+                } catch (e) {
+                    // geen metadata gevonden, standaardwaarden blijven gelden
+                }
+
+                let iconen = '';
+                if (compat.pc) iconen += '🖥️ ';
+                if (compat.telefoon) iconen += '📱 ';
+
+                // Overlay: één klik = focus op het spel + meteen volledig scherm
+                const overlay = document.createElement('div');
+                overlay.innerHTML = '<div style="font-size:22px; margin-bottom:8px;">' + iconen + '</div>▶ Klik om te spelen';
+                overlay.style.position = 'absolute';
+                overlay.style.inset = '0';
+                overlay.style.display = 'flex';
+                overlay.style.flexDirection = 'column';
+                overlay.style.alignItems = 'center';
+                overlay.style.justifyContent = 'center';
+                overlay.style.background = 'rgba(0,0,0,0.6)';
+                overlay.style.color = '#fff';
+                overlay.style.fontSize = '16px';
+                overlay.style.fontWeight = 'bold';
+                overlay.style.cursor = 'pointer';
+                overlay.style.borderRadius = '5px';
+                overlay.addEventListener('click', () => {
                     if (frame.requestFullscreen) {
                         frame.requestFullscreen();
                     } else if (frame.webkitRequestFullscreen) {
                         frame.webkitRequestFullscreen();
                     }
+                    frame.contentWindow && frame.contentWindow.focus();
+                    overlay.remove();
                 });
 
+                wrapper.appendChild(frame);
+                wrapper.appendChild(overlay);
+
                 card.appendChild(titel);
-                card.appendChild(frame);
-                card.appendChild(fsKnop);
+                card.appendChild(wrapper);
                 lijst.appendChild(card);
 
                 // Ruwe HTML-tekst ophalen en in de iframe laden
@@ -143,6 +189,20 @@
                     contentType: 'text/html',
                     upsert: true
                 });
+
+            // Sla ook op voor welke apparaten deze game geschikt is
+            if (!error) {
+                const meta = {
+                    pc: document.getElementById('geschiktPC').checked,
+                    telefoon: document.getElementById('geschiktTelefoon').checked
+                };
+                await db.storage
+                    .from('games')
+                    .upload(veiligeNaam + '.meta.json', new Blob([JSON.stringify(meta)], { type: 'application/json' }), {
+                        contentType: 'application/json',
+                        upsert: true
+                    });
+            }
 
             knop.disabled = false;
 

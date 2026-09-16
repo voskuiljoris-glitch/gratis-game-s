@@ -103,7 +103,14 @@
 
             // Spaties en rare tekens in de bestandsnaam geven problemen in de URL
             const veiligeNaam = naam.replace(/[^a-zA-Z0-9-_]/g, '-').toLowerCase();
-            const bestand = fileInput.files[0];
+            const origineel = fileInput.files[0];
+
+            // FIX: sommige browsers geven .html-bestanden geen (of een verkeerd) MIME-type mee
+            // bij het selecteren. We lezen de ruwe inhoud en verpakken die zelf opnieuw
+            // in een Blob met een hard ingesteld type, zodat het altijd als tekst/html
+            // wordt opgeslagen en dus gerenderd wordt i.p.v. als platte tekst getoond.
+            const tekst = await origineel.text();
+            const bestand = new Blob([tekst], { type: 'text/html' });
 
             knop.disabled = true;
             status.textContent = "Bezig met uploaden...";

@@ -6,17 +6,19 @@
     <title>Open Game Platform</title>
     <style>
         body { font-family: Arial, sans-serif; background: #121212; color: white; text-align: center; padding: 20px; }
-        .box { background: #1e1e1e; padding: 20px; border-radius: 10px; display: inline-block; margin: 20px; border: 2px dashed #444; max-width: 400px; }
-        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 20px; max-width: 1200px; margin: 20px auto; }
-        .card { background: #222; padding: 15px; border-radius: 10px; border: 1px solid #333; text-align: left; }
-        .game-wrapper { width: 100%; height: 300px; background: #000; border-radius: 5px; overflow: hidden; margin-bottom: 10px; }
-        iframe { width: 100%; height: 100%; border: none; }
-        button { background: #00ca4e; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; font-weight: bold; width: 100%; margin-top: 10px; }
-        button:hover { background: #00b545; }
-        input[type="text"] { display: block; margin: 10px 0; padding: 8px; width: 100%; background: #333; color: white; border: 1px solid #555; border-radius: 5px; box-sizing: border-box; }
-        .checkbox-container { text-align: left; margin: 10px 0; font-size: 14px; }
-        .checkbox-container label { display: block; margin: 5px 0; cursor: pointer; }
-        .tag { display: inline-block; background: #444; font-size: 12px; padding: 3px 8px; border-radius: 3px; margin-right: 5px; margin-top: 5px; }
+        .box { background: #1e1e1e; padding: 20px; border-radius: 10px; display: inline-block; margin: 20px; border: 2px dashed #444; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 20px; max-width: 1200px; margin: 20px auto; }
+        .card { background: #222; padding: 15px; border-radius: 10px; border: 1px solid #333; position: relative; }
+        iframe { width: 100%; height: 250px; border: none; background: #000; border-radius: 5px; }
+        button { background: #00ca4e; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; font-weight: bold; }
+        input { display: block; margin: 10px auto; padding: 8px; width: 250px; background: #333; color: white; border: 1px solid #555; border-radius: 5px; }
+        
+        /* Subtiele extra stijlen voor de nieuwe functies die binnen je UI passen */
+        .search-bar { width: 300px; margin: 30px auto 10px auto; font-size: 16px; border: 1px solid #00ca4e; }
+        .fs-link { display: inline-block; margin-top: 8px; color: #007bff; text-decoration: none; font-size: 13px; font-weight: bold; cursor: pointer; margin-right: 15px; }
+        .fs-link:hover { text-decoration: underline; }
+        .like-btn { display: inline-block; margin-top: 8px; background: none; border: none; color: #ff4757; font-size: 14px; cursor: pointer; padding: 0; font-weight: bold; }
+        .like-btn:hover { transform: scale(1.1); }
     </style>
     <!-- De stabiele server-link voor de database software -->
     <script src="https://unpkg.com"></script>
@@ -30,17 +32,20 @@
     <div class="box">
         <h3>Zelf een game uploaden?</h3>
         <input type="text" id="gameNaam" placeholder="Naam van je game...">
-        <input type="file" id="gameBestand" accept=".html" style="margin: 10px 0; color: #ccc;">
+        <input type="file" id="gameBestand" accept=".html">
         
-        <div class="checkbox-container">
-            <label><input type="checkbox" id="checkPC"> 🖥 Geschikt voor PC</label>
-            <label><input type="checkbox" id="checkMobiel"> 📱 Geschikt voor telefoon</label>
+        <div style="margin: 10px 0; font-size: 14px; text-align: left; display: inline-block;">
+            <label style="display: block;"><input type="checkbox" id="checkPC"> 🖥 Geschikt voor PC</label>
+            <label style="display: block;"><input type="checkbox" id="checkMobiel"> 📱 Geschikt voor telefoon</label>
         </div>
         
         <button onclick="uploadDeGame()">Nu Uploaden & Publiceren</button>
     </div>
 
-    <hr style="border: 1px solid #333; margin: 40px 0;">
+    <hr style="border: 1px solid #333; margin-top: 30px;">
+
+    <!-- NIEUW: De subtiele zoekbalk boven de gamelijst -->
+    <input type="text" id="zoekBalk" class="search-bar" placeholder="🔍 Zoek een game..." oninput="filterGames()">
 
     <h2>Alle Games</h2>
     <div class="grid" id="gameLijst"></div>
@@ -50,8 +55,8 @@
         const SUPABASE_URL = "https://supabase.co";
         const SUPABASE_KEY = "sb_publishable_Hrkm_ghr_xNpXdCYITo1Ug_F4assrx8";
         
-        // Verbinden met de database
         const supabase = supabasejs.createClient(SUPABASE_URL, SUPABASE_KEY);
+        let alleGeladenGames = []; // Onthoudt de games voor de zoekbalk
 
         // 1. Functie om alle games op te halen en te tonen
         async function laadGames() {
@@ -61,39 +66,76 @@
                 return;
             }
             
+            alleGeladenGames = data.filter(file => file.name !== ".emptyFolderPlaceholder");
+            toonGames(alleGeladenGames);
+        }
+
+        // Bouwt de kaartjes op het scherm zonder je UI aan te tasten
+        function toonGames(gamesLijst) {
             const lijst = document.getElementById('gameLijst');
             lijst.innerHTML = ""; 
 
-            data.forEach(file => {
-                if(file.name === ".emptyFolderPlaceholder") return;
-                
+            gamesLijst.forEach((file, index) => {
                 const { data: urlData } = supabase.storage.from('games').getPublicUrl(file.name);
                 
-                // Haal de tags uit de bestandsnaam (als die erin zitten)
                 let schoneNaam = file.name.replace('.html', '');
                 let isPC = schoneNaam.includes('_PC');
                 let isMobiel = schoneNaam.includes('_MOB');
                 
-                // Maak de naam weer netjes voor het scherm
                 schoneNaam = schoneNaam.replace('_PC', '').replace('_MOB', '');
+                const iframeId = "game-frame-" + index;
 
-                // BELANGRIJK: sandbox="allow-scripts allow-same-origin" zorgt ervoor dat savegames bewaard blijven!
+                // Haal opgeslagen likes op uit het lokale geheugen van de browser van de speler
+                const opgeslagenLikes = localStorage.getItem('likes_' + file.name) || 0;
+
                 lijst.innerHTML += `
                     <div class="card">
-                        <div class="game-wrapper">
-                            <iframe src="${urlData.publicUrl}" sandbox="allow-scripts allow-same-origin"></iframe>
-                        </div>
                         <h3>${schoneNaam}</h3>
-                        <div>
-                            ${isPC ? '<span class="tag">🖥 PC</span>' : ''}
-                            ${isMobiel ? '<span class="tag">📱 Mobiel</span>' : ''}
+                        <iframe id="${iframeId}" src="${urlData.publicUrl}" sandbox="allow-scripts allow-same-origin" allow="fullscreen"></iframe>
+                        <div style="margin-top: 5px; font-size: 13px; text-align: left;">
+                            ${isPC ? '🖥 PC ' : ''}
+                            ${isMobiel ? '📱 Mobiel' : ''}
+                        </div>
+                        <div style="text-align: left; margin-top: 5px;">
+                            <span class="fs-link" onclick="openFullscreen('${iframeId}')">↕ Volledig Scherm</span>
+                            <button class="like-btn" onclick="likeGame('${file.name}', this)">❤️ <span class="like-count">${opgeslagenLikes}</span></button>
                         </div>
                     </div>
                 `;
             });
         }
 
-        // 2. Uploadfunctie die ook de PC/Telefoon tags meestuurt
+        // NIEUW: De live zoekfunctie
+        window.filterGames = function() {
+            const zoekTerm = document.getElementById('zoekBalk').value.toLowerCase();
+            const gefilterdeGames = alleGeladenGames.filter(file => {
+                const schoneNaam = file.name.replace('.html', '').replace('_PC', '').replace('_MOB', '').toLowerCase();
+                return schoneNaam.includes(zoekTerm);
+            });
+            toonGames(gefilterdeGames);
+        }
+
+        // NIEUW: Het likes-systeem (slaat het op in de browser van de speler)
+        window.likeGame = function(bestandsNaam, knop) {
+            let huidigeLikes = parseInt(localStorage.getItem('likes_' + bestandsNaam)) || 0;
+            huidigeLikes++;
+            localStorage.setItem('likes_' + bestandsNaam, huidigeLikes);
+            
+            // Update het getal direct op het scherm
+            knop.querySelector('.like-count').innerText = huidigeLikes;
+        }
+
+        // Volledig scherm functie
+        window.openFullscreen = function(id) {
+            const iframe = document.getElementById(id);
+            if (iframe) {
+                if (iframe.requestFullscreen) { iframe.requestFullscreen(); } 
+                else if (iframe.webkitRequestFullscreen) { iframe.webkitRequestFullscreen(); } 
+                else if (iframe.msRequestFullscreen) { iframe.msRequestFullscreen(); }
+            }
+        }
+
+        // Uploadfunctie
         async function uploadDeGame() {
             const naamInput = document.getElementById('gameNaam').value.trim();
             const fileInput = document.getElementById('gameBestand');
@@ -105,9 +147,8 @@
                 return;
             }
 
-            const bestand = fileInput.files[0];
+            const bestand = fileInput.files;
             
-            // Plak stiekem tags aan de bestandsnaam om te onthouden waar de game geschikt voor is
             let bestandsNaam = naamInput;
             if (checkPC) bestandsNaam += "_PC";
             if (checkMobiel) bestandsNaam += "_MOB";
@@ -123,10 +164,9 @@
                 });
 
             if (error) {
-                alert("Er ging iets mis met de upload: " + error.message);
+                alert("Er ging Microsoft iets mis met de upload: " + error.message);
             } else {
                 alert("Je game staat live op de website!");
-                // Maak het formulier weer leeg
                 document.getElementById('gameNaam').value = "";
                 fileInput.value = "";
                 document.getElementById('checkPC').checked = false;
@@ -135,8 +175,8 @@
             }
         }
 
-        // Start direct als de pagina opent
         laadGames();
     </script>
 </body>
 </html>
+

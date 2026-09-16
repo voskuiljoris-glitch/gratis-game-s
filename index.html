@@ -33,6 +33,7 @@
     <!-- SCHERM 1: Games-overzicht (standaard zichtbaar) -->
     <div id="gamesScherm">
         <p>Speel gratis HTML-games, gemaakt door de community!</p>
+        <input type="text" id="zoekBalk" placeholder="🔍 Zoek een game..." style="max-width: 300px;">
         <div class="grid" id="gameLijst"></div>
     </div>
 
@@ -245,6 +246,15 @@
         document.getElementById('terugKnop').addEventListener('click', () => {
             uploadScherm.classList.add('verborgen');
             gamesScherm.classList.remove('verborgen');
+        });
+
+        // Zoekbalk: filtert de zichtbare game-kaarten op naam
+        document.getElementById('zoekBalk').addEventListener('input', (e) => {
+            const zoekterm = e.target.value.toLowerCase();
+            document.querySelectorAll('#gameLijst .card').forEach(card => {
+                const titel = card.querySelector('h3').textContent.toLowerCase();
+                card.style.display = titel.includes(zoekterm) ? '' : 'none';
+            });
         });
 
         laadGames();

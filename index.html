@@ -67,8 +67,10 @@
                 if (file.name === ".emptyFolderPlaceholder") return;
 
                 const { data: urlData } = db.storage.from('games').getPublicUrl(file.name);
-                // Cache-buster: voorkomt dat Supabase's CDN een oude, gecachete
-                // versie van het bestand blijft teruggeven na een update.
+                // Supabase geeft .html-bestanden altijd terug als platte tekst
+                // (bewuste beveiligingsmaatregel, niet aan te passen via instellingen).
+                // Daarom halen we de tekst zelf op en zetten die in de iframe via
+                // srcdoc, i.p.v. te vertrouwen op de content-type header van Supabase.
                 const verseUrl = urlData.publicUrl + '?v=' + Date.now();
 
                 const card = document.createElement('div');
@@ -79,13 +81,21 @@
                 titel.textContent = file.name.replace(/\.html$/, '');
 
                 const frame = document.createElement('iframe');
-                frame.src = verseUrl;
                 // sandbox: de game mag draaien, maar niet bij jouw site of opslag komen
                 frame.setAttribute('sandbox', 'allow-scripts');
 
                 card.appendChild(titel);
                 card.appendChild(frame);
                 lijst.appendChild(card);
+
+                // Ruwe HTML-tekst ophalen en in de iframe laden
+                fetch(verseUrl)
+                    .then(res => res.text())
+                    .then(html => { frame.srcdoc = html; })
+                    .catch(err => {
+                        frame.replaceWith(document.createTextNode('Kon deze game niet laden.'));
+                        console.error('Fout bij laden van game-inhoud:', err);
+                    });
             });
 
             if (!lijst.children.length) {
@@ -106,14 +116,7 @@
 
             // Spaties en rare tekens in de bestandsnaam geven problemen in de URL
             const veiligeNaam = naam.replace(/[^a-zA-Z0-9-_]/g, '-').toLowerCase();
-            const origineel = fileInput.files[0];
-
-            // FIX: sommige browsers geven .html-bestanden geen (of een verkeerd) MIME-type mee
-            // bij het selecteren. We lezen de ruwe inhoud en verpakken die zelf opnieuw
-            // in een Blob met een hard ingesteld type, zodat het altijd als tekst/html
-            // wordt opgeslagen en dus gerenderd wordt i.p.v. als platte tekst getoond.
-            const tekst = await origineel.text();
-            const bestand = new Blob([tekst], { type: 'text/html' });
+            const bestand = fileInput.files[0];
 
             knop.disabled = true;
             status.textContent = "Bezig met uploaden...";

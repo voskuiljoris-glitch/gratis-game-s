@@ -195,16 +195,6 @@
 
                 card.appendChild(titel);
 
-                // Hoogste score tonen als die al eens is opgeslagen via het bruggetje hieronder
-                const scoreLabel = document.createElement('p');
-                scoreLabel.style.fontSize = '13px';
-                scoreLabel.style.color = '#9ad';
-                scoreLabel.style.margin = '2px 0 8px';
-                scoreLabel.setAttribute('data-hoogste-score', naamZonderExt);
-                const opgeslagenScore = localStorage.getItem('hoogstescore_' + naamZonderExt);
-                scoreLabel.textContent = opgeslagenScore ? '🏆 Hoogste score: ' + opgeslagenScore : '';
-                card.appendChild(scoreLabel);
-
                 // In het beheerscherm: status tonen + goedkeuren-knop bij niet-goedgekeurde games
                 if (toonNietGoedgekeurd) {
                     const statusLabel = document.createElement('p');
@@ -304,6 +294,53 @@
             }
         }
 
+        // Voegt automatisch een klein stukje code toe aan een geüpload spel, zodat
+        // localStorage (de standaardmanier waarop spellen dingen opslaan) door de
+        // hoofdpagina heen loopt en dus echt blijft bewaard — zonder dat de maker
+        // van het spel daar zelf iets voor hoeft te doen.
+        function voegOpslagToe(html, spelNaam) {
+            // Check eerst of dit bestand het bruggetje al bevat (bijv. iemand die een
+            // eerder gedownload spel opnieuw upload) — dan niet nog een keer toevoegen.
+            const MARKER = 'platform-opslag-bruggetje';
+            if (html.indexOf(MARKER) !== -1) {
+                return html;
+            }
+
+            const shimOpen = '<scr' + 'ipt>';
+            const shimClose = '<' + '/scr' + 'ipt>';
+            const code = [
+                '// ' + MARKER,
+                '(function(){',
+                '  var GAME_NAME = ' + JSON.stringify(spelNaam) + ';',
+                '  var cache = {};',
+                '  window.addEventListener("message", function(e){',
+                '    if (e.data && e.data.type === "localStorage-alles-antwoord" && e.data.spel === GAME_NAME) {',
+                '      cache = e.data.data || {};',
+                '    }',
+                '  });',
+                '  try { window.parent.postMessage({type:"localStorage-alles-opvragen", spel: GAME_NAME}, "*"); } catch(e) {}',
+                '  try {',
+                '    Object.defineProperty(window, "localStorage", { configurable: true, value: {',
+                '      getItem: function(k){ return Object.prototype.hasOwnProperty.call(cache, k) ? cache[k] : null; },',
+                '      setItem: function(k, v){ cache[k] = String(v); try { window.parent.postMessage({type:"localStorage-item-opslaan", spel: GAME_NAME, key: k, value: String(v)}, "*"); } catch(e) {} },',
+                '      removeItem: function(k){ delete cache[k]; try { window.parent.postMessage({type:"localStorage-item-verwijderen", spel: GAME_NAME, key: k}, "*"); } catch(e) {} },',
+                '      clear: function(){ cache = {}; try { window.parent.postMessage({type:"localStorage-alles-wissen", spel: GAME_NAME}, "*"); } catch(e) {} },',
+                '      key: function(i){ return Object.keys(cache)[i] || null; },',
+                '      get length(){ return Object.keys(cache).length; }',
+                '    }});',
+                '  } catch(e) {}',
+                '})();'
+            ].join('\n');
+            const shim = shimOpen + code + shimClose;
+
+            const headMatch = html.match(/<head[^>]*>/i);
+            if (headMatch) {
+                const idx = html.indexOf(headMatch[0]) + headMatch[0].length;
+                return html.slice(0, idx) + shim + html.slice(idx);
+            }
+            return shim + html;
+        }
+
         // 2. Uploaden
         async function uploadDeGame() {
             const knop = document.getElementById('uploadKnop');
@@ -317,7 +354,9 @@
 
             // Spaties en rare tekens in de bestandsnaam geven problemen in de URL
             const veiligeNaam = naam.replace(/[^a-zA-Z0-9-_]/g, '-').toLowerCase();
-            const bestand = fileInput.files[0];
+            const origineleTekst = await fileInput.files[0].text();
+            const tekstMetOpslag = voegOpslagToe(origineleTekst, veiligeNaam);
+            const bestand = new Blob([tekstMetOpslag], { type: 'text/html' });
 
             knop.disabled = true;
             status.textContent = "Bezig met uploaden...";
@@ -417,25 +456,35 @@
             }
         });
 
-        // Bruggetje voor spellen om hun hoogste score op te slaan/op te vragen.
-        // Spellen zelf kunnen dit niet betrouwbaar via hun eigen localStorage,
-        // omdat ze in een beveiligde sandbox-iframe draaien (expres, voor veiligheid).
+        // Bruggetje voor spellen: hun (automatisch vervangen) localStorage loopt
+        // via deze berichten naar de hoofdpagina, die het écht blijvend opslaat.
+        // Per spel wordt alles onder één sleutel bewaard: gamedata_<spelnaam>
+        function leesSpelData(spel) {
+            try { return JSON.parse(localStorage.getItem('gamedata_' + spel) || '{}'); }
+            catch (e) { return {}; }
+        }
+        function schrijfSpelData(spel, data) {
+            localStorage.setItem('gamedata_' + spel, JSON.stringify(data));
+        }
+
         window.addEventListener('message', (e) => {
-            if (!e.data || typeof e.data !== 'object') return;
+            if (!e.data || typeof e.data !== 'object' || !e.data.spel) return;
 
-            if (e.data.type === 'hoogste-score-opslaan' && e.data.spel) {
-                const key = 'hoogstescore_' + e.data.spel;
-                const huidige = parseInt(localStorage.getItem(key) || '0');
-                const nieuwe = Math.max(huidige, parseInt(e.data.score) || 0);
-                localStorage.setItem(key, nieuwe);
-                const label = document.querySelector('[data-hoogste-score="' + e.data.spel + '"]');
-                if (label) label.textContent = '🏆 Hoogste score: ' + nieuwe;
+            if (e.data.type === 'localStorage-alles-opvragen' && e.source) {
+                e.source.postMessage({ type: 'localStorage-alles-antwoord', spel: e.data.spel, data: leesSpelData(e.data.spel) }, '*');
             }
-
-            if (e.data.type === 'hoogste-score-opvragen' && e.data.spel && e.source) {
-                const key = 'hoogstescore_' + e.data.spel;
-                const huidige = parseInt(localStorage.getItem(key) || '0');
-                e.source.postMessage({ type: 'hoogste-score-antwoord', spel: e.data.spel, score: huidige }, '*');
+            if (e.data.type === 'localStorage-item-opslaan') {
+                const data = leesSpelData(e.data.spel);
+                data[e.data.key] = e.data.value;
+                schrijfSpelData(e.data.spel, data);
+            }
+            if (e.data.type === 'localStorage-item-verwijderen') {
+                const data = leesSpelData(e.data.spel);
+                delete data[e.data.key];
+                schrijfSpelData(e.data.spel, data);
+            }
+            if (e.data.type === 'localStorage-alles-wissen') {
+                localStorage.removeItem('gamedata_' + e.data.spel);
             }
         });
 

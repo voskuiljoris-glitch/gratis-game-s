@@ -177,6 +177,22 @@
                 wrapper.appendChild(frame);
                 wrapper.appendChild(overlay);
 
+                const fsGameKnop = document.createElement('button');
+                fsGameKnop.textContent = '⛶ Volledig scherm';
+                fsGameKnop.style.marginTop = '8px';
+                fsGameKnop.style.fontSize = '13px';
+                fsGameKnop.style.padding = '6px 12px';
+                fsGameKnop.style.background = '#333';
+                fsGameKnop.addEventListener('click', () => {
+                    if (overlay.parentNode) overlay.remove(); // eerste klik telt ook als "spelen starten"
+                    if (frame.requestFullscreen) {
+                        frame.requestFullscreen();
+                    } else if (frame.webkitRequestFullscreen) {
+                        frame.webkitRequestFullscreen();
+                    }
+                    frame.contentWindow && frame.contentWindow.focus();
+                });
+
                 card.appendChild(titel);
 
                 // In het beheerscherm: status tonen + goedkeuren-knop bij niet-goedgekeurde games
@@ -217,17 +233,44 @@
                             if (!confirm('Weet je zeker dat je "' + naamZonderExt + '" wilt afkeuren en verwijderen?')) return;
                             afkeurKnop.disabled = true;
                             afkeurKnop.textContent = 'Bezig...';
-                            await db.storage.from('games').remove([file.name, naamZonderExt + '.meta.json']);
+                            const { error: verwijderError } = await db.storage.from('games').remove([file.name, naamZonderExt + '.meta.json']);
+                            if (verwijderError) {
+                                alert('Verwijderen mislukt: ' + verwijderError.message);
+                                afkeurKnop.disabled = false;
+                                afkeurKnop.textContent = '❌ Afkeuren';
+                                return;
+                            }
                             laadGames(true);
                         });
 
                         knopRij.appendChild(goedkeurKnop);
                         knopRij.appendChild(afkeurKnop);
                         card.appendChild(knopRij);
+                    } else {
+                        // Ook al-goedgekeurde games kun je vanuit beheer alsnog verwijderen
+                        const verwijderKnop = document.createElement('button');
+                        verwijderKnop.textContent = '🗑️ Verwijderen';
+                        verwijderKnop.style.background = '#c0392b';
+                        verwijderKnop.style.marginBottom = '10px';
+                        verwijderKnop.addEventListener('click', async () => {
+                            if (!confirm('Weet je zeker dat je "' + naamZonderExt + '" wilt verwijderen?')) return;
+                            verwijderKnop.disabled = true;
+                            verwijderKnop.textContent = 'Bezig...';
+                            const { error: verwijderError } = await db.storage.from('games').remove([file.name, naamZonderExt + '.meta.json']);
+                            if (verwijderError) {
+                                alert('Verwijderen mislukt: ' + verwijderError.message);
+                                verwijderKnop.disabled = false;
+                                verwijderKnop.textContent = '🗑️ Verwijderen';
+                                return;
+                            }
+                            laadGames(true);
+                        });
+                        card.appendChild(verwijderKnop);
                     }
                 }
 
                 card.appendChild(wrapper);
+                card.appendChild(fsGameKnop);
                 lijst.appendChild(card);
 
                 // Ruwe HTML-tekst ophalen en in de iframe laden

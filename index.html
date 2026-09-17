@@ -204,6 +204,44 @@
                     statusLabel.style.color = compat.approved ? '#5f5' : '#fc5';
                     card.appendChild(statusLabel);
 
+                    // Bestaande games alsnog voorzien van de opslag- en WASD-bruggetjes
+                    const updateKnop = document.createElement('button');
+                    updateKnop.textContent = '🔧 Code bijwerken';
+                    updateKnop.style.background = '#3a6ea5';
+                    updateKnop.style.marginBottom = '10px';
+                    updateKnop.addEventListener('click', async () => {
+                        updateKnop.disabled = true;
+                        updateKnop.textContent = 'Bezig...';
+                        try {
+                            const res = await fetch(urlData.publicUrl + '?v=' + Date.now());
+                            const huidigeTekst = await res.text();
+                            const stap1 = voegOpslagToe(huidigeTekst, naamZonderExt);
+                            const stap2 = voegWasdToe(stap1);
+                            if (stap2 === huidigeTekst) {
+                                updateKnop.textContent = '✅ Al up-to-date';
+                            } else {
+                                const { error: updateError } = await db.storage
+                                    .from('games')
+                                    .upload(file.name, new Blob([stap2], { type: 'text/html' }), {
+                                        contentType: 'text/html',
+                                        upsert: true
+                                    });
+                                if (updateError) {
+                                    alert('Bijwerken mislukt: ' + updateError.message);
+                                    updateKnop.disabled = false;
+                                    updateKnop.textContent = '🔧 Code bijwerken';
+                                    return;
+                                }
+                                updateKnop.textContent = '✅ Bijgewerkt!';
+                            }
+                        } catch (e) {
+                            alert('Bijwerken mislukt: ' + e.message);
+                            updateKnop.disabled = false;
+                            updateKnop.textContent = '🔧 Code bijwerken';
+                        }
+                    });
+                    card.appendChild(updateKnop);
+
                     if (!compat.approved) {
                         const knopRij = document.createElement('div');
                         knopRij.style.display = 'flex';
@@ -341,6 +379,43 @@
             return shim + html;
         }
 
+        // Voegt automatisch WASD-ondersteuning toe: elke W/A/S/D-druk wordt ook
+        // doorgestuurd als een pijltjestoets-druk, zodat spellen die alleen naar
+        // pijltjestoetsen luisteren ook met WASD bestuurd kunnen worden.
+        function voegWasdToe(html) {
+            const MARKER = 'platform-wasd-bruggetje';
+            if (html.indexOf(MARKER) !== -1) {
+                return html;
+            }
+
+            const shimOpen = '<scr' + 'ipt>';
+            const shimClose = '<' + '/scr' + 'ipt>';
+            const code = [
+                '// ' + MARKER,
+                '(function(){',
+                '  var MAP = { w:"ArrowUp", a:"ArrowLeft", s:"ArrowDown", d:"ArrowRight" };',
+                '  function stuurDoor(origineel, type) {',
+                '    var letter = origineel.key ? origineel.key.toLowerCase() : "";',
+                '    var pijltje = MAP[letter];',
+                '    if (!pijltje) return;',
+                '    var nep = new KeyboardEvent(type, { key: pijltje, code: pijltje, bubbles: true, cancelable: true });',
+                '    window.dispatchEvent(nep);',
+                '    document.dispatchEvent(nep);',
+                '  }',
+                '  window.addEventListener("keydown", function(e){ stuurDoor(e, "keydown"); }, true);',
+                '  window.addEventListener("keyup", function(e){ stuurDoor(e, "keyup"); }, true);',
+                '})();'
+            ].join('\n');
+            const shim = shimOpen + code + shimClose;
+
+            const headMatch = html.match(/<head[^>]*>/i);
+            if (headMatch) {
+                const idx = html.indexOf(headMatch[0]) + headMatch[0].length;
+                return html.slice(0, idx) + shim + html.slice(idx);
+            }
+            return shim + html;
+        }
+
         // 2. Uploaden
         async function uploadDeGame() {
             const knop = document.getElementById('uploadKnop');
@@ -356,7 +431,8 @@
             const veiligeNaam = naam.replace(/[^a-zA-Z0-9-_]/g, '-').toLowerCase();
             const origineleTekst = await fileInput.files[0].text();
             const tekstMetOpslag = voegOpslagToe(origineleTekst, veiligeNaam);
-            const bestand = new Blob([tekstMetOpslag], { type: 'text/html' });
+            const tekstCompleet = voegWasdToe(tekstMetOpslag);
+            const bestand = new Blob([tekstCompleet], { type: 'text/html' });
 
             knop.disabled = true;
             status.textContent = "Bezig met uploaden...";

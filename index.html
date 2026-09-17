@@ -195,6 +195,16 @@
 
                 card.appendChild(titel);
 
+                // Hoogste score tonen als die al eens is opgeslagen via het bruggetje hieronder
+                const scoreLabel = document.createElement('p');
+                scoreLabel.style.fontSize = '13px';
+                scoreLabel.style.color = '#9ad';
+                scoreLabel.style.margin = '2px 0 8px';
+                scoreLabel.setAttribute('data-hoogste-score', naamZonderExt);
+                const opgeslagenScore = localStorage.getItem('hoogstescore_' + naamZonderExt);
+                scoreLabel.textContent = opgeslagenScore ? '🏆 Hoogste score: ' + opgeslagenScore : '';
+                card.appendChild(scoreLabel);
+
                 // In het beheerscherm: status tonen + goedkeuren-knop bij niet-goedgekeurde games
                 if (toonNietGoedgekeurd) {
                     const statusLabel = document.createElement('p');
@@ -404,6 +414,28 @@
                 }
             } else {
                 if (document.exitFullscreen) document.exitFullscreen();
+            }
+        });
+
+        // Bruggetje voor spellen om hun hoogste score op te slaan/op te vragen.
+        // Spellen zelf kunnen dit niet betrouwbaar via hun eigen localStorage,
+        // omdat ze in een beveiligde sandbox-iframe draaien (expres, voor veiligheid).
+        window.addEventListener('message', (e) => {
+            if (!e.data || typeof e.data !== 'object') return;
+
+            if (e.data.type === 'hoogste-score-opslaan' && e.data.spel) {
+                const key = 'hoogstescore_' + e.data.spel;
+                const huidige = parseInt(localStorage.getItem(key) || '0');
+                const nieuwe = Math.max(huidige, parseInt(e.data.score) || 0);
+                localStorage.setItem(key, nieuwe);
+                const label = document.querySelector('[data-hoogste-score="' + e.data.spel + '"]');
+                if (label) label.textContent = '🏆 Hoogste score: ' + nieuwe;
+            }
+
+            if (e.data.type === 'hoogste-score-opvragen' && e.data.spel && e.source) {
+                const key = 'hoogstescore_' + e.data.spel;
+                const huidige = parseInt(localStorage.getItem(key) || '0');
+                e.source.postMessage({ type: 'hoogste-score-antwoord', spel: e.data.spel, score: huidige }, '*');
             }
         });
 

@@ -217,12 +217,18 @@
                             goedkeurKnop.disabled = true;
                             goedkeurKnop.textContent = 'Bezig...';
                             const nieuweMeta = { pc: compat.pc, telefoon: compat.telefoon, approved: true };
-                            await db.storage
+                            const { error: goedkeurError } = await db.storage
                                 .from('games')
                                 .upload(naamZonderExt + '.meta.json', new Blob([JSON.stringify(nieuweMeta)], { type: 'application/json' }), {
                                     contentType: 'application/json',
                                     upsert: true
                                 });
+                            if (goedkeurError) {
+                                alert('Goedkeuren mislukt: ' + goedkeurError.message);
+                                goedkeurKnop.disabled = false;
+                                goedkeurKnop.textContent = '✅ Goedkeuren';
+                                return;
+                            }
                             laadGames(true);
                         });
 

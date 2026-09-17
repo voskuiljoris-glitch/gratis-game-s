@@ -29,6 +29,7 @@
         <h1>🎮 Open Game Platform</h1>
         <div>
             <button id="fsPaginaKnop" class="secundair">⛶ Volledig scherm</button>
+            <button id="beheerKnop" class="secundair">🔑 Beheer</button>
             <button id="naarUploadKnop">+ Game uploaden</button>
         </div>
     </div>
@@ -60,6 +61,13 @@
         </div>
     </div>
 
+    <!-- SCHERM 3: Beheerscherm (wachtwoord-beveiligd, toont alle games incl. niet-goedgekeurde) -->
+    <div id="beheerScherm" class="verborgen">
+        <button id="beheerTerugKnop" class="secundair">&larr; Terug naar games</button>
+        <h2>Beheer: goedkeuring van games</h2>
+        <div class="grid" id="beheerLijst"></div>
+    </div>
+
     <script>
         const SUPABASE_URL = "https://zwfhrbvunmcdffsrgxhn.supabase.co";
         const SUPABASE_KEY = "sb_publishable_Hrkm_ghr_xNpXdCYITo1Ug_F4assrx8";
@@ -71,9 +79,9 @@
 
         const status = document.getElementById('status');
 
-        // 1. Alle geuploade games inladen
-        async function laadGames() {
-            const lijst = document.getElementById('gameLijst');
+        // 1. Alle geuploade games inladen. toonNietGoedgekeurd=true toont alles (voor het beheerscherm)
+        async function laadGames(toonNietGoedgekeurd = false) {
+            const lijst = toonNietGoedgekeurd ? document.getElementById('beheerLijst') : document.getElementById('gameLijst');
             lijst.textContent = "Laden...";
 
             const { data, error } = await db.storage.from('games').list();
@@ -170,6 +178,36 @@
                 wrapper.appendChild(overlay);
 
                 card.appendChild(titel);
+
+                // In het beheerscherm: status tonen + goedkeuren-knop bij niet-goedgekeurde games
+                if (toonNietGoedgekeurd) {
+                    const statusLabel = document.createElement('p');
+                    statusLabel.style.fontSize = '13px';
+                    statusLabel.style.margin = '4px 0';
+                    statusLabel.textContent = compat.approved ? '✅ Goedgekeurd' : '⏳ Wacht op goedkeuring';
+                    statusLabel.style.color = compat.approved ? '#5f5' : '#fc5';
+                    card.appendChild(statusLabel);
+
+                    if (!compat.approved) {
+                        const goedkeurKnop = document.createElement('button');
+                        goedkeurKnop.textContent = '✅ Goedkeuren';
+                        goedkeurKnop.style.marginBottom = '10px';
+                        goedkeurKnop.addEventListener('click', async () => {
+                            goedkeurKnop.disabled = true;
+                            goedkeurKnop.textContent = 'Bezig...';
+                            const nieuweMeta = { pc: compat.pc, telefoon: compat.telefoon, approved: true };
+                            await db.storage
+                                .from('games')
+                                .upload(naamZonderExt + '.meta.json', new Blob([JSON.stringify(nieuweMeta)], { type: 'application/json' }), {
+                                    contentType: 'application/json',
+                                    upsert: true
+                                });
+                            laadGames(true);
+                        });
+                        card.appendChild(goedkeurKnop);
+                    }
+                }
+
                 card.appendChild(wrapper);
                 lijst.appendChild(card);
 
@@ -257,6 +295,25 @@
         });
         document.getElementById('terugKnop').addEventListener('click', () => {
             uploadScherm.classList.add('verborgen');
+            gamesScherm.classList.remove('verborgen');
+        });
+
+        // Beheerscherm: wachtwoord-beveiligd (verander dit wachtwoord zelf!)
+        const BEHEER_WACHTWOORD = "Gamebeheer9301";
+        const beheerScherm = document.getElementById('beheerScherm');
+        document.getElementById('beheerKnop').addEventListener('click', () => {
+            const invoer = prompt("Wachtwoord voor beheer:");
+            if (invoer === BEHEER_WACHTWOORD) {
+                gamesScherm.classList.add('verborgen');
+                uploadScherm.classList.add('verborgen');
+                beheerScherm.classList.remove('verborgen');
+                laadGames(true);
+            } else if (invoer !== null) {
+                alert("Verkeerd wachtwoord.");
+            }
+        });
+        document.getElementById('beheerTerugKnop').addEventListener('click', () => {
+            beheerScherm.classList.add('verborgen');
             gamesScherm.classList.remove('verborgen');
         });
 

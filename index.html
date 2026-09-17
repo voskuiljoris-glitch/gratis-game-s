@@ -27,7 +27,10 @@
 
     <div class="topbar">
         <h1>🎮 Open Game Platform</h1>
-        <button id="naarUploadKnop">+ Game uploaden</button>
+        <div>
+            <button id="fsPaginaKnop" class="secundair">⛶ Volledig scherm</button>
+            <button id="naarUploadKnop">+ Game uploaden</button>
+        </div>
     </div>
 
     <!-- SCHERM 1: Games-overzicht (standaard zichtbaar) -->
@@ -114,17 +117,25 @@
                 // Compatibiliteit ophalen (zo mogelijk); standaard beide aan als er
                 // geen metadata-bestand is (bijv. oudere, al bestaande uploads)
                 const naamZonderExt = file.name.replace(/\.html$/, '');
-                let compat = { pc: true, telefoon: true };
+                let compat = { pc: true, telefoon: true, approved: true };
                 try {
                     const { data: metaUrlData } = db.storage.from('games').getPublicUrl(naamZonderExt + '.meta.json');
                     const metaRes = await fetch(metaUrlData.publicUrl + '?v=' + Date.now());
                     if (metaRes.ok) {
                         const metaJson = await metaRes.json();
-                        compat = { pc: !!metaJson.pc, telefoon: !!metaJson.telefoon };
+                        compat = {
+                            pc: !!metaJson.pc,
+                            telefoon: !!metaJson.telefoon,
+                            // Bestaande metadata zonder 'approved'-veld (van vóór deze functie) blijft goedgekeurd
+                            approved: metaJson.approved === undefined ? true : !!metaJson.approved
+                        };
                     }
                 } catch (e) {
                     // geen metadata gevonden, standaardwaarden blijven gelden
                 }
+
+                // In het gewone overzicht tonen we alleen goedgekeurde games
+                if (!compat.approved && !toonNietGoedgekeurd) return;
 
                 let iconen = '';
                 if (compat.pc) iconen += '🖥️ ';
@@ -202,11 +213,12 @@
                     upsert: true
                 });
 
-            // Sla ook op voor welke apparaten deze game geschikt is
+            // Sla ook op voor welke apparaten deze game geschikt is, en dat hij nog goedgekeurd moet worden
             if (!error) {
                 const meta = {
                     pc: document.getElementById('geschiktPC').checked,
-                    telefoon: document.getElementById('geschiktTelefoon').checked
+                    telefoon: document.getElementById('geschiktTelefoon').checked,
+                    approved: false
                 };
                 await db.storage
                     .from('games')
@@ -255,6 +267,19 @@
                 const titel = card.querySelector('h3').textContent.toLowerCase();
                 card.style.display = titel.includes(zoekterm) ? '' : 'none';
             });
+        });
+
+        // Volledig scherm voor de hele pagina
+        document.getElementById('fsPaginaKnop').addEventListener('click', () => {
+            if (!document.fullscreenElement) {
+                if (document.documentElement.requestFullscreen) {
+                    document.documentElement.requestFullscreen();
+                } else if (document.documentElement.webkitRequestFullscreen) {
+                    document.documentElement.webkitRequestFullscreen();
+                }
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
         });
 
         laadGames();

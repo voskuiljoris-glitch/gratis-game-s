@@ -189,9 +189,14 @@
                     card.appendChild(statusLabel);
 
                     if (!compat.approved) {
+                        const knopRij = document.createElement('div');
+                        knopRij.style.display = 'flex';
+                        knopRij.style.gap = '8px';
+                        knopRij.style.justifyContent = 'center';
+                        knopRij.style.marginBottom = '10px';
+
                         const goedkeurKnop = document.createElement('button');
                         goedkeurKnop.textContent = '✅ Goedkeuren';
-                        goedkeurKnop.style.marginBottom = '10px';
                         goedkeurKnop.addEventListener('click', async () => {
                             goedkeurKnop.disabled = true;
                             goedkeurKnop.textContent = 'Bezig...';
@@ -204,7 +209,21 @@
                                 });
                             laadGames(true);
                         });
-                        card.appendChild(goedkeurKnop);
+
+                        const afkeurKnop = document.createElement('button');
+                        afkeurKnop.textContent = '❌ Afkeuren';
+                        afkeurKnop.style.background = '#c0392b';
+                        afkeurKnop.addEventListener('click', async () => {
+                            if (!confirm('Weet je zeker dat je "' + naamZonderExt + '" wilt afkeuren en verwijderen?')) return;
+                            afkeurKnop.disabled = true;
+                            afkeurKnop.textContent = 'Bezig...';
+                            await db.storage.from('games').remove([file.name, naamZonderExt + '.meta.json']);
+                            laadGames(true);
+                        });
+
+                        knopRij.appendChild(goedkeurKnop);
+                        knopRij.appendChild(afkeurKnop);
+                        card.appendChild(knopRij);
                     }
                 }
 
@@ -271,7 +290,7 @@
             if (error) {
                 status.textContent = "Er ging iets mis: " + error.message;
             } else {
-                status.textContent = "Klaar! Je game staat live.";
+                status.textContent = "Klaar! Je game is geupload en wordt binnenkort mogelijk goedgekeurd.";
                 fileInput.value = "";
                 document.getElementById('gameNaam').value = "";
                 laadGames();
@@ -279,7 +298,7 @@
                     uploadScherm.classList.add('verborgen');
                     gamesScherm.classList.remove('verborgen');
                     status.textContent = "";
-                }, 1200);
+                }, 2500);
             }
         }
 

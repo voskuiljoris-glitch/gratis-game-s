@@ -29,6 +29,7 @@
         <h1>🎮 Open Game Platform</h1>
         <div>
             <button id="fsPaginaKnop" class="secundair">⛶ Volledig scherm</button>
+            <button id="naarBijwerkenKnop" class="secundair">🔄 Bijwerken</button>
             <button id="beheerKnop" class="secundair">🔑 Beheer</button>
             <button id="naarUploadKnop">+ Game uploaden</button>
         </div>
@@ -68,6 +69,35 @@
         <div class="grid" id="beheerLijst"></div>
     </div>
 
+    <!-- SCHERM 4: Zelf iets wijzigen aan je game (eerst code, dan naam/bestand kiezen) -->
+    <div id="bijwerkenScherm" class="verborgen">
+        <button id="bijwerkenTerugKnop" class="secundair">&larr; Terug naar games</button>
+
+        <div class="box" id="codeStapBox">
+            <h3>Je game wijzigen</h3>
+            <p style="font-size:13px; color:#aaa; max-width:280px;">
+                Vul de 4-cijferige code in die je bij het uploaden kreeg.
+            </p>
+            <input type="text" id="zoekCode" placeholder="4-cijferige code" maxlength="4" style="text-align:center; letter-spacing:4px;">
+            <button id="zoekCodeKnop">Zoek mijn game</button>
+            <p id="zoekStatus" style="min-height:24px; color:#9ad;"></p>
+        </div>
+
+        <div class="box verborgen" id="wijzigStapBox">
+            <h3 id="gevondenSpelTitel"></h3>
+            <p style="font-size:13px; color:#aaa; max-width:280px;">
+                Vul een nieuwe naam in, kies een nieuw bestand, of allebei.
+                De wijziging gaat pas live nadat de beheerder hem heeft goedgekeurd.
+            </p>
+            <input type="text" id="nieuweNaamInvoer" placeholder="Nieuwe naam (optioneel)...">
+            <input type="file" id="updateBestand" accept=".html">
+            <button id="updateIndienKnop">Wijziging Indienen</button>
+            <p id="updateStatus" style="min-height:24px; color:#9ad;"></p>
+            <hr style="border: 1px solid #333; margin: 16px 0;">
+            <button id="verwijderEigenKnop" style="background:#c0392b;">🗑️ Mijn game verwijderen</button>
+        </div>
+    </div>
+
     <script>
         const SUPABASE_URL = "https://zwfhrbvunmcdffsrgxhn.supabase.co";
         const SUPABASE_KEY = "sb_publishable_Hrkm_ghr_xNpXdCYITo1Ug_F4assrx8";
@@ -97,6 +127,7 @@
             data.forEach(async (file) => {
                 if (file.name === ".emptyFolderPlaceholder") return;
                 if (file.name.endsWith('.meta.json')) return; // dit is geen game, maar bijbehorende info
+                if (file.name.endsWith('.update.html')) return; // dit is een wachtende update, geen eigen game
 
                 const { data: urlData } = db.storage.from('games').getPublicUrl(file.name);
                 // Supabase geeft .html-bestanden altijd terug als platte tekst
@@ -118,14 +149,14 @@
 
                 const frame = document.createElement('iframe');
                 // sandbox: de game mag draaien, maar niet bij jouw site of opslag komen
-                // allow-fullscreen: nodig zodat volledig scherm werkt
-                frame.setAttribute('sandbox', 'allow-scripts allow-fullscreen');
+                // allowfullscreen (los attribuut, niet in sandbox): nodig zodat volledig scherm werkt
+                frame.setAttribute('sandbox', 'allow-scripts');
                 frame.setAttribute('allowfullscreen', 'true');
 
                 // Compatibiliteit ophalen (zo mogelijk); standaard beide aan als er
                 // geen metadata-bestand is (bijv. oudere, al bestaande uploads)
                 const naamZonderExt = file.name.replace(/\.html$/, '');
-                let compat = { pc: true, telefoon: true, approved: true };
+                let compat = { pc: true, telefoon: true, approved: true, code: null, heeftUpdate: false, nieuweNaam: null };
                 try {
                     const { data: metaUrlData } = db.storage.from('games').getPublicUrl(naamZonderExt + '.meta.json');
                     const metaRes = await fetch(metaUrlData.publicUrl + '?v=' + Date.now());
@@ -135,7 +166,10 @@
                             pc: !!metaJson.pc,
                             telefoon: !!metaJson.telefoon,
                             // Bestaande metadata zonder 'approved'-veld (van vóór deze functie) blijft goedgekeurd
-                            approved: metaJson.approved === undefined ? true : !!metaJson.approved
+                            approved: metaJson.approved === undefined ? true : !!metaJson.approved,
+                            code: metaJson.code || null,
+                            heeftUpdate: !!metaJson.heeftUpdate,
+                            nieuweNaam: metaJson.nieuweNaam || null
                         };
                     }
                 } catch (e) {
@@ -204,6 +238,14 @@
                     statusLabel.style.color = compat.approved ? '#5f5' : '#fc5';
                     card.appendChild(statusLabel);
 
+                    // Code tonen, alleen zichtbaar voor de beheerder
+                    const codeLabel = document.createElement('p');
+                    codeLabel.style.fontSize = '12px';
+                    codeLabel.style.color = '#888';
+                    codeLabel.style.margin = '0 0 6px';
+                    codeLabel.textContent = '🔑 Code: ' + (compat.code || '—');
+                    card.appendChild(codeLabel);
+
                     // Bestaande games alsnog voorzien van de opslag- en WASD-bruggetjes
                     const updateKnop = document.createElement('button');
                     updateKnop.textContent = '🔧 Code bijwerken';
@@ -254,7 +296,7 @@
                         goedkeurKnop.addEventListener('click', async () => {
                             goedkeurKnop.disabled = true;
                             goedkeurKnop.textContent = 'Bezig...';
-                            const nieuweMeta = { pc: compat.pc, telefoon: compat.telefoon, approved: true };
+                            const nieuweMeta = { pc: compat.pc, telefoon: compat.telefoon, approved: true, code: compat.code, heeftUpdate: compat.heeftUpdate, nieuweNaam: compat.nieuweNaam };
                             const { error: goedkeurError } = await db.storage
                                 .from('games')
                                 .upload(naamZonderExt + '.meta.json', new Blob([JSON.stringify(nieuweMeta)], { type: 'application/json' }), {
@@ -291,6 +333,105 @@
                         knopRij.appendChild(afkeurKnop);
                         card.appendChild(knopRij);
                     } else {
+                        // Als de maker zelf een wijziging heeft ingediend (nieuw bestand en/of nieuwe naam)
+                        if (compat.heeftUpdate || compat.nieuweNaam) {
+                            const watStaatKlaar = [];
+                            if (compat.heeftUpdate) watStaatKlaar.push('nieuwe versie van het spel');
+                            if (compat.nieuweNaam) watStaatKlaar.push('naam wijzigen naar "' + compat.nieuweNaam + '"');
+
+                            const updateLabel = document.createElement('p');
+                            updateLabel.style.fontSize = '13px';
+                            updateLabel.style.color = '#5cf';
+                            updateLabel.textContent = '🔄 In afwachting: ' + watStaatKlaar.join(' + ');
+                            card.appendChild(updateLabel);
+
+                            const updateKnopRij = document.createElement('div');
+                            updateKnopRij.style.display = 'flex';
+                            updateKnopRij.style.gap = '8px';
+                            updateKnopRij.style.justifyContent = 'center';
+                            updateKnopRij.style.marginBottom = '10px';
+
+                            const updateGoedkeurKnop = document.createElement('button');
+                            updateGoedkeurKnop.textContent = '✅ Goedkeuren';
+                            updateGoedkeurKnop.addEventListener('click', async () => {
+                                updateGoedkeurKnop.disabled = true;
+                                updateGoedkeurKnop.textContent = 'Bezig...';
+                                try {
+                                    // Inhoud bepalen: nieuwe versie indien ingediend, anders de huidige
+                                    let nieuweTekst;
+                                    if (compat.heeftUpdate) {
+                                        const { data: updUrlData } = db.storage.from('games').getPublicUrl(naamZonderExt + '.update.html');
+                                        const updRes = await fetch(updUrlData.publicUrl + '?v=' + Date.now());
+                                        nieuweTekst = await updRes.text();
+                                    } else {
+                                        const huidigeRes = await fetch(urlData.publicUrl + '?v=' + Date.now());
+                                        nieuweTekst = await huidigeRes.text();
+                                    }
+
+                                    const nieuweBasisNaam = compat.nieuweNaam || naamZonderExt;
+                                    const bijgewerkteMeta = { pc: compat.pc, telefoon: compat.telefoon, approved: true, code: compat.code, heeftUpdate: false, nieuweNaam: null };
+
+                                    const { error: schrijfError } = await db.storage
+                                        .from('games')
+                                        .upload(nieuweBasisNaam + '.html', new Blob([nieuweTekst], { type: 'text/html' }), {
+                                            contentType: 'text/html',
+                                            upsert: true
+                                        });
+                                    if (schrijfError) throw schrijfError;
+
+                                    await db.storage
+                                        .from('games')
+                                        .upload(nieuweBasisNaam + '.meta.json', new Blob([JSON.stringify(bijgewerkteMeta)], { type: 'application/json' }), {
+                                            contentType: 'application/json',
+                                            upsert: true
+                                        });
+
+                                    // Opruimen: de update.html is niet meer nodig, en bij hernoemen ook de oude bestanden weg
+                                    const opTeRuimen = [naamZonderExt + '.update.html'];
+                                    if (nieuweBasisNaam !== naamZonderExt) {
+                                        opTeRuimen.push(naamZonderExt + '.html', naamZonderExt + '.meta.json');
+                                    }
+                                    await db.storage.from('games').remove(opTeRuimen);
+
+                                    laadGames(true);
+                                } catch (e) {
+                                    alert('Goedkeuren mislukt: ' + e.message);
+                                    updateGoedkeurKnop.disabled = false;
+                                    updateGoedkeurKnop.textContent = '✅ Goedkeuren';
+                                }
+                            });
+
+                            const updateAfwijzenKnop = document.createElement('button');
+                            updateAfwijzenKnop.textContent = '❌ Afwijzen';
+                            updateAfwijzenKnop.style.background = '#c0392b';
+                            updateAfwijzenKnop.addEventListener('click', async () => {
+                                if (!confirm('Weet je zeker dat je deze wijziging wilt afwijzen? De huidige versie blijft ongewijzigd staan.')) return;
+                                updateAfwijzenKnop.disabled = true;
+                                updateAfwijzenKnop.textContent = 'Bezig...';
+                                try {
+                                    if (compat.heeftUpdate) {
+                                        await db.storage.from('games').remove([naamZonderExt + '.update.html']);
+                                    }
+                                    const bijgewerkteMeta = { pc: compat.pc, telefoon: compat.telefoon, approved: true, code: compat.code, heeftUpdate: false, nieuweNaam: null };
+                                    await db.storage
+                                        .from('games')
+                                        .upload(naamZonderExt + '.meta.json', new Blob([JSON.stringify(bijgewerkteMeta)], { type: 'application/json' }), {
+                                            contentType: 'application/json',
+                                            upsert: true
+                                        });
+                                    laadGames(true);
+                                } catch (e) {
+                                    alert('Afwijzen mislukt: ' + e.message);
+                                    updateAfwijzenKnop.disabled = false;
+                                    updateAfwijzenKnop.textContent = '❌ Afwijzen';
+                                }
+                            });
+
+                            updateKnopRij.appendChild(updateGoedkeurKnop);
+                            updateKnopRij.appendChild(updateAfwijzenKnop);
+                            card.appendChild(updateKnopRij);
+                        }
+
                         // Ook al-goedgekeurde games kun je vanuit beheer alsnog verwijderen
                         const verwijderKnop = document.createElement('button');
                         verwijderKnop.textContent = '🗑️ Verwijderen';
@@ -300,7 +441,7 @@
                             if (!confirm('Weet je zeker dat je "' + naamZonderExt + '" wilt verwijderen?')) return;
                             verwijderKnop.disabled = true;
                             verwijderKnop.textContent = 'Bezig...';
-                            const { error: verwijderError } = await db.storage.from('games').remove([file.name, naamZonderExt + '.meta.json']);
+                            const { error: verwijderError } = await db.storage.from('games').remove([file.name, naamZonderExt + '.meta.json', naamZonderExt + '.update.html']);
                             if (verwijderError) {
                                 alert('Verwijderen mislukt: ' + verwijderError.message);
                                 verwijderKnop.disabled = false;
@@ -357,26 +498,32 @@
                 '    }',
                 '  });',
                 '  try { window.parent.postMessage({type:"localStorage-alles-opvragen", spel: GAME_NAME}, "*"); } catch(e) {}',
-                '  try {',
-                '    Object.defineProperty(window, "localStorage", { configurable: true, value: {',
-                '      getItem: function(k){ return Object.prototype.hasOwnProperty.call(cache, k) ? cache[k] : null; },',
-                '      setItem: function(k, v){ cache[k] = String(v); try { window.parent.postMessage({type:"localStorage-item-opslaan", spel: GAME_NAME, key: k, value: String(v)}, "*"); } catch(e) {} },',
-                '      removeItem: function(k){ delete cache[k]; try { window.parent.postMessage({type:"localStorage-item-verwijderen", spel: GAME_NAME, key: k}, "*"); } catch(e) {} },',
-                '      clear: function(){ cache = {}; try { window.parent.postMessage({type:"localStorage-alles-wissen", spel: GAME_NAME}, "*"); } catch(e) {} },',
-                '      key: function(i){ return Object.keys(cache)[i] || null; },',
-                '      get length(){ return Object.keys(cache).length; }',
-                '    }});',
-                '  } catch(e) {}',
+                // window.localStorage is een "onvervangbare" eigenschap in de browser en
+                // kan niet overschreven worden (Object.defineProperty faalt/gooit een fout
+                // in een sandbox-iframe). Daarom vervangen we hieronder alle verwijzingen
+                // naar 'localStorage' in de spelcode zelf door dit gewone object.
+                '  window._platformStorage = {',
+                '    getItem: function(k){ return Object.prototype.hasOwnProperty.call(cache, k) ? cache[k] : null; },',
+                '    setItem: function(k, v){ cache[k] = String(v); try { window.parent.postMessage({type:"localStorage-item-opslaan", spel: GAME_NAME, key: k, value: String(v)}, "*"); } catch(e) {} },',
+                '    removeItem: function(k){ delete cache[k]; try { window.parent.postMessage({type:"localStorage-item-verwijderen", spel: GAME_NAME, key: k}, "*"); } catch(e) {} },',
+                '    clear: function(){ cache = {}; try { window.parent.postMessage({type:"localStorage-alles-wissen", spel: GAME_NAME}, "*"); } catch(e) {} },',
+                '    key: function(i){ return Object.keys(cache)[i] || null; },',
+                '    get length(){ return Object.keys(cache).length; }',
+                '  };',
                 '})();'
             ].join('\n');
             const shim = shimOpen + code + shimClose;
 
-            const headMatch = html.match(/<head[^>]*>/i);
+            // Alle letterlijke verwijzingen naar 'localStorage' in de rest van het
+            // spel (buiten dit bruggetje) vervangen door onze eigen, wel-werkende naam.
+            const htmlMetVervanging = html.replace(/\blocalStorage\b/g, '_platformStorage');
+
+            const headMatch = htmlMetVervanging.match(/<head[^>]*>/i);
             if (headMatch) {
-                const idx = html.indexOf(headMatch[0]) + headMatch[0].length;
-                return html.slice(0, idx) + shim + html.slice(idx);
+                const idx = htmlMetVervanging.indexOf(headMatch[0]) + headMatch[0].length;
+                return htmlMetVervanging.slice(0, idx) + shim + htmlMetVervanging.slice(idx);
             }
-            return shim + html;
+            return shim + htmlMetVervanging;
         }
 
         // Voegt automatisch WASD-ondersteuning toe: elke W/A/S/D-druk wordt ook
@@ -416,7 +563,132 @@
             return shim + html;
         }
 
-        // 2. Uploaden
+        // 3. Zelf iets wijzigen: eerst het spel opzoeken met de geheime code
+        let gevondenSpelNaam = null;
+
+        async function zoekSpelOpCode() {
+            const zoekStatus = document.getElementById('zoekStatus');
+            const codeInvoer = document.getElementById('zoekCode').value.trim();
+            if (!codeInvoer) { alert('Vul je code in!'); return; }
+
+            zoekStatus.textContent = 'Zoeken...';
+            const { data, error } = await db.storage.from('games').list();
+            if (error) {
+                zoekStatus.textContent = 'Er ging iets mis bij het zoeken.';
+                return;
+            }
+
+            let gevonden = null;
+            for (const file of data) {
+                if (!file.name.endsWith('.meta.json')) continue;
+                try {
+                    const { data: urlData } = db.storage.from('games').getPublicUrl(file.name);
+                    const res = await fetch(urlData.publicUrl + '?v=' + Date.now());
+                    if (!res.ok) continue;
+                    const meta = await res.json();
+                    if (String(meta.code) === codeInvoer) {
+                        gevonden = file.name.replace(/\.meta\.json$/, '');
+                        break;
+                    }
+                } catch (e) { /* negeer en ga door met de volgende */ }
+            }
+
+            if (!gevonden) {
+                zoekStatus.textContent = 'Geen game gevonden met die code.';
+                return;
+            }
+
+            gevondenSpelNaam = gevonden;
+            zoekStatus.textContent = '';
+            document.getElementById('gevondenSpelTitel').textContent = 'Gevonden: ' + gevonden;
+            document.getElementById('codeStapBox').classList.add('verborgen');
+            document.getElementById('wijzigStapBox').classList.remove('verborgen');
+        }
+
+        // Wijziging (nieuwe naam en/of nieuw bestand) indienen; wacht op goedkeuring
+        async function dienWijzigingIn() {
+            const knop = document.getElementById('updateIndienKnop');
+            const updateStatus = document.getElementById('updateStatus');
+            const nieuweNaamInvoer = document.getElementById('nieuweNaamInvoer').value.trim();
+            const fileInput = document.getElementById('updateBestand');
+
+            if (!nieuweNaamInvoer && !fileInput.files.length) {
+                alert('Vul een nieuwe naam in, kies een nieuw bestand, of allebei!');
+                return;
+            }
+
+            knop.disabled = true;
+            updateStatus.textContent = 'Bezig...';
+
+            const { data: metaUrlData } = db.storage.from('games').getPublicUrl(gevondenSpelNaam + '.meta.json');
+            let meta;
+            try {
+                const res = await fetch(metaUrlData.publicUrl + '?v=' + Date.now());
+                meta = await res.json();
+            } catch (e) {
+                updateStatus.textContent = 'Kon de gegevens van je spel niet ophalen.';
+                knop.disabled = false;
+                return;
+            }
+
+            if (fileInput.files.length) {
+                const origineleTekst = await fileInput.files[0].text();
+                const tekstMetOpslag = voegOpslagToe(origineleTekst, gevondenSpelNaam);
+                const tekstCompleet = voegWasdToe(tekstMetOpslag);
+                const bestand = new Blob([tekstCompleet], { type: 'text/html' });
+                const { error: uploadError } = await db.storage
+                    .from('games')
+                    .upload(gevondenSpelNaam + '.update.html', bestand, { contentType: 'text/html', upsert: true });
+                if (uploadError) {
+                    updateStatus.textContent = 'Uploaden mislukt: ' + uploadError.message;
+                    knop.disabled = false;
+                    return;
+                }
+                meta.heeftUpdate = true;
+            }
+
+            if (nieuweNaamInvoer) {
+                meta.nieuweNaam = nieuweNaamInvoer.replace(/[^a-zA-Z0-9-_]/g, '-').toLowerCase();
+            }
+
+            await db.storage
+                .from('games')
+                .upload(gevondenSpelNaam + '.meta.json', new Blob([JSON.stringify(meta)], { type: 'application/json' }), {
+                    contentType: 'application/json',
+                    upsert: true
+                });
+
+            knop.disabled = false;
+            updateStatus.textContent = 'Klaar! Je wijziging wacht nu op goedkeuring van de beheerder.';
+            document.getElementById('nieuweNaamInvoer').value = '';
+            fileInput.value = '';
+        }
+
+        // Je eigen game direct verwijderen (geen goedkeuring nodig, want je hebt al de geheime code bewezen)
+        async function verwijderEigenGame() {
+            if (!confirm('Weet je zeker dat je "' + gevondenSpelNaam + '" wilt verwijderen? Dit kan niet ongedaan gemaakt worden.')) return;
+
+            const verwijderKnop = document.getElementById('verwijderEigenKnop');
+            const updateStatus = document.getElementById('updateStatus');
+            verwijderKnop.disabled = true;
+            verwijderKnop.textContent = 'Bezig...';
+
+            const { error: verwijderError } = await db.storage
+                .from('games')
+                .remove([gevondenSpelNaam + '.html', gevondenSpelNaam + '.meta.json', gevondenSpelNaam + '.update.html']);
+
+            if (verwijderError) {
+                updateStatus.textContent = 'Verwijderen mislukt: ' + verwijderError.message;
+                verwijderKnop.disabled = false;
+                verwijderKnop.textContent = '🗑️ Mijn game verwijderen';
+                return;
+            }
+
+            updateStatus.textContent = 'Je game is verwijderd.';
+            setTimeout(() => toonScherm(gamesScherm), 1500);
+        }
+
+        // 4. Uploaden
         async function uploadDeGame() {
             const knop = document.getElementById('uploadKnop');
             const naam = document.getElementById('gameNaam').value.trim();
@@ -444,12 +716,17 @@
                     upsert: true
                 });
 
-            // Sla ook op voor welke apparaten deze game geschikt is, en dat hij nog goedgekeurd moet worden
+            // Sla ook op voor welke apparaten deze game geschikt is, of hij nog goedgekeurd moet worden,
+            // en een geheime 4-cijferige code waarmee de maker later zelf een update kan indienen
+            const spelCode = Math.floor(1000 + Math.random() * 9000).toString();
             if (!error) {
                 const meta = {
                     pc: document.getElementById('geschiktPC').checked,
                     telefoon: document.getElementById('geschiktTelefoon').checked,
-                    approved: false
+                    approved: false,
+                    code: spelCode,
+                    heeftUpdate: false,
+                    nieuweNaam: null
                 };
                 await db.storage
                     .from('games')
@@ -464,51 +741,65 @@
             if (error) {
                 status.textContent = "Er ging iets mis: " + error.message;
             } else {
-                status.textContent = "Klaar! Je game is geupload en wordt binnenkort mogelijk goedgekeurd.";
+                status.innerHTML = "Klaar! Je game is geupload en wordt binnenkort mogelijk goedgekeurd.<br>" +
+                    "<strong style='color:#ffd700; font-size:18px;'>Jouw code: " + spelCode + "</strong><br>" +
+                    "<span style='font-size:12px;'>Bewaar deze goed — nodig om later zelf een update in te dienen!</span>";
                 fileInput.value = "";
                 document.getElementById('gameNaam').value = "";
                 laadGames();
                 setTimeout(() => {
-                    uploadScherm.classList.add('verborgen');
-                    gamesScherm.classList.remove('verborgen');
+                    toonScherm(gamesScherm);
                     status.textContent = "";
-                }, 2500);
+                }, 6000);
             }
         }
 
         // Knop koppelen vanuit JS i.p.v. onclick in de HTML
         document.getElementById('uploadKnop').addEventListener('click', uploadDeGame);
 
-        // Wisselen tussen games-overzicht en uploadscherm
+        // Wisselen tussen games-overzicht, uploadscherm, beheerscherm en bijwerkenscherm
         const gamesScherm = document.getElementById('gamesScherm');
         const uploadScherm = document.getElementById('uploadScherm');
-        document.getElementById('naarUploadKnop').addEventListener('click', () => {
-            gamesScherm.classList.add('verborgen');
-            uploadScherm.classList.remove('verborgen');
-        });
-        document.getElementById('terugKnop').addEventListener('click', () => {
-            uploadScherm.classList.add('verborgen');
-            gamesScherm.classList.remove('verborgen');
-        });
+        const beheerScherm = document.getElementById('beheerScherm');
+        const bijwerkenScherm = document.getElementById('bijwerkenScherm');
+        const alleSchermen = [gamesScherm, uploadScherm, beheerScherm, bijwerkenScherm];
+        function toonScherm(scherm) {
+            alleSchermen.forEach(s => s.classList.add('verborgen'));
+            scherm.classList.remove('verborgen');
+        }
+
+        document.getElementById('naarUploadKnop').addEventListener('click', () => toonScherm(uploadScherm));
+        document.getElementById('terugKnop').addEventListener('click', () => toonScherm(gamesScherm));
 
         // Beheerscherm: wachtwoord-beveiligd (verander dit wachtwoord zelf!)
         const BEHEER_WACHTWOORD = "Gamebeheer9301";
-        const beheerScherm = document.getElementById('beheerScherm');
         document.getElementById('beheerKnop').addEventListener('click', () => {
             const invoer = prompt("Wachtwoord voor beheer:");
             if (invoer === BEHEER_WACHTWOORD) {
-                gamesScherm.classList.add('verborgen');
-                uploadScherm.classList.add('verborgen');
-                beheerScherm.classList.remove('verborgen');
+                toonScherm(beheerScherm);
                 laadGames(true);
             } else if (invoer !== null) {
                 alert("Verkeerd wachtwoord.");
             }
         });
-        document.getElementById('beheerTerugKnop').addEventListener('click', () => {
-            beheerScherm.classList.add('verborgen');
-            gamesScherm.classList.remove('verborgen');
+        document.getElementById('beheerTerugKnop').addEventListener('click', () => toonScherm(gamesScherm));
+
+        // Zelf-wijzigscherm: reset altijd naar stap 1 (code invoeren) bij binnenkomst
+        document.getElementById('naarBijwerkenKnop').addEventListener('click', () => {
+            gevondenSpelNaam = null;
+            document.getElementById('zoekCode').value = '';
+            document.getElementById('zoekStatus').textContent = '';
+            document.getElementById('nieuweNaamInvoer').value = '';
+            document.getElementById('updateBestand').value = '';
+            document.getElementById('updateStatus').textContent = '';
+            document.getElementById('codeStapBox').classList.remove('verborgen');
+            document.getElementById('wijzigStapBox').classList.add('verborgen');
+            toonScherm(bijwerkenScherm);
         });
+        document.getElementById('bijwerkenTerugKnop').addEventListener('click', () => toonScherm(gamesScherm));
+        document.getElementById('zoekCodeKnop').addEventListener('click', zoekSpelOpCode);
+        document.getElementById('updateIndienKnop').addEventListener('click', dienWijzigingIn);
+        document.getElementById('verwijderEigenKnop').addEventListener('click', verwijderEigenGame);
 
         // Zoekbalk: filtert de zichtbare game-kaarten op naam
         document.getElementById('zoekBalk').addEventListener('input', (e) => {

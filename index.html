@@ -156,7 +156,7 @@
                 // Compatibiliteit ophalen (zo mogelijk); standaard beide aan als er
                 // geen metadata-bestand is (bijv. oudere, al bestaande uploads)
                 const naamZonderExt = file.name.replace(/\.html$/, '');
-                let compat = { pc: true, telefoon: true, approved: true, code: null, heeftUpdate: false, nieuweNaam: null };
+                let compat = { pc: true, telefoon: true, approved: true, code: null, heeftUpdate: false, nieuweNaam: null, opslagId: null };
                 try {
                     const { data: metaUrlData } = db.storage.from('games').getPublicUrl(naamZonderExt + '.meta.json');
                     const metaRes = await fetch(metaUrlData.publicUrl + '?v=' + Date.now());
@@ -169,7 +169,9 @@
                             approved: metaJson.approved === undefined ? true : !!metaJson.approved,
                             code: metaJson.code || null,
                             heeftUpdate: !!metaJson.heeftUpdate,
-                            nieuweNaam: metaJson.nieuweNaam || null
+                            nieuweNaam: metaJson.nieuweNaam || null,
+                            // Oudere spellen (van vóór deze functie) hebben nog geen permanent opslag-ID
+                            opslagId: metaJson.opslagId || null
                         };
                     }
                 } catch (e) {
@@ -255,9 +257,17 @@
                         updateKnop.disabled = true;
                         updateKnop.textContent = 'Bezig...';
                         try {
+                            // Permanent ID: bestaat het al, gebruik het; anders nu aanmaken en onthouden
+                            let idVoorDitSpel = compat.opslagId;
+                            let metaMoetBijgewerkt = false;
+                            if (!idVoorDitSpel) {
+                                idVoorDitSpel = 'g' + Math.random().toString(36).slice(2, 10);
+                                metaMoetBijgewerkt = true;
+                            }
+
                             const res = await fetch(urlData.publicUrl + '?v=' + Date.now());
                             const huidigeTekst = await res.text();
-                            const stap1 = voegOpslagToe(huidigeTekst, naamZonderExt);
+                            const stap1 = voegOpslagToe(huidigeTekst, idVoorDitSpel);
                             const stap2 = voegWasdToe(stap1);
                             if (stap2 === huidigeTekst) {
                                 updateKnop.textContent = '✅ Al up-to-date';
@@ -273,6 +283,15 @@
                                     updateKnop.disabled = false;
                                     updateKnop.textContent = '🔧 Code bijwerken';
                                     return;
+                                }
+                                if (metaMoetBijgewerkt) {
+                                    const bijgewerkteMeta = { pc: compat.pc, telefoon: compat.telefoon, approved: compat.approved, code: compat.code, heeftUpdate: compat.heeftUpdate, nieuweNaam: compat.nieuweNaam, opslagId: idVoorDitSpel };
+                                    await db.storage
+                                        .from('games')
+                                        .upload(naamZonderExt + '.meta.json', new Blob([JSON.stringify(bijgewerkteMeta)], { type: 'application/json' }), {
+                                            contentType: 'application/json',
+                                            upsert: true
+                                        });
                                 }
                                 updateKnop.textContent = '✅ Bijgewerkt!';
                             }
@@ -296,7 +315,7 @@
                         goedkeurKnop.addEventListener('click', async () => {
                             goedkeurKnop.disabled = true;
                             goedkeurKnop.textContent = 'Bezig...';
-                            const nieuweMeta = { pc: compat.pc, telefoon: compat.telefoon, approved: true, code: compat.code, heeftUpdate: compat.heeftUpdate, nieuweNaam: compat.nieuweNaam };
+                            const nieuweMeta = { pc: compat.pc, telefoon: compat.telefoon, approved: true, code: compat.code, heeftUpdate: compat.heeftUpdate, nieuweNaam: compat.nieuweNaam, opslagId: compat.opslagId };
                             const { error: goedkeurError } = await db.storage
                                 .from('games')
                                 .upload(naamZonderExt + '.meta.json', new Blob([JSON.stringify(nieuweMeta)], { type: 'application/json' }), {
@@ -369,7 +388,7 @@
                                     }
 
                                     const nieuweBasisNaam = compat.nieuweNaam || naamZonderExt;
-                                    const bijgewerkteMeta = { pc: compat.pc, telefoon: compat.telefoon, approved: true, code: compat.code, heeftUpdate: false, nieuweNaam: null };
+                                    const bijgewerkteMeta = { pc: compat.pc, telefoon: compat.telefoon, approved: true, code: compat.code, heeftUpdate: false, nieuweNaam: null, opslagId: compat.opslagId };
 
                                     const { error: schrijfError } = await db.storage
                                         .from('games')
@@ -412,7 +431,7 @@
                                     if (compat.heeftUpdate) {
                                         await db.storage.from('games').remove([naamZonderExt + '.update.html']);
                                     }
-                                    const bijgewerkteMeta = { pc: compat.pc, telefoon: compat.telefoon, approved: true, code: compat.code, heeftUpdate: false, nieuweNaam: null };
+                                    const bijgewerkteMeta = { pc: compat.pc, telefoon: compat.telefoon, approved: true, code: compat.code, heeftUpdate: false, nieuweNaam: null, opslagId: compat.opslagId };
                                     await db.storage
                                         .from('games')
                                         .upload(naamZonderExt + '.meta.json', new Blob([JSON.stringify(bijgewerkteMeta)], { type: 'application/json' }), {
@@ -632,8 +651,13 @@
             }
 
             if (fileInput.files.length) {
+                // Bestaand permanent ID gebruiken zodat opgeslagen voortgang van spelers
+                // behouden blijft; alleen aanmaken als dit spel er nog geen heeft (oudere games)
+                if (!meta.opslagId) {
+                    meta.opslagId = 'g' + Math.random().toString(36).slice(2, 10);
+                }
                 const origineleTekst = await fileInput.files[0].text();
-                const tekstMetOpslag = voegOpslagToe(origineleTekst, gevondenSpelNaam);
+                const tekstMetOpslag = voegOpslagToe(origineleTekst, meta.opslagId);
                 const tekstCompleet = voegWasdToe(tekstMetOpslag);
                 const bestand = new Blob([tekstCompleet], { type: 'text/html' });
                 const { error: uploadError } = await db.storage
@@ -701,8 +725,11 @@
 
             // Spaties en rare tekens in de bestandsnaam geven problemen in de URL
             const veiligeNaam = naam.replace(/[^a-zA-Z0-9-_]/g, '-').toLowerCase();
+            // Permanent opslag-ID: dit blijft altijd hetzelfde, ook als het spel later
+            // hernoemd wordt — zo blijft opgeslagen voortgang van spelers altijd behouden.
+            const opslagId = 'g' + Math.random().toString(36).slice(2, 10);
             const origineleTekst = await fileInput.files[0].text();
-            const tekstMetOpslag = voegOpslagToe(origineleTekst, veiligeNaam);
+            const tekstMetOpslag = voegOpslagToe(origineleTekst, opslagId);
             const tekstCompleet = voegWasdToe(tekstMetOpslag);
             const bestand = new Blob([tekstCompleet], { type: 'text/html' });
 
@@ -726,7 +753,8 @@
                     approved: false,
                     code: spelCode,
                     heeftUpdate: false,
-                    nieuweNaam: null
+                    nieuweNaam: null,
+                    opslagId: opslagId
                 };
                 await db.storage
                     .from('games')
